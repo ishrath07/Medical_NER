@@ -154,8 +154,14 @@ def main():
     )
 
     print("Loading model...")
+    id2label = {i: label for i, label in enumerate(label_list)}
+    label2id = {label: i for i, label in enumerate(label_list)}
+
     model = AutoModelForTokenClassification.from_pretrained(
-        MODEL_CHECKPOINT, num_labels=len(label_list)
+        MODEL_CHECKPOINT,
+        num_labels=len(label_list),
+        id2label=id2label,
+        label2id=label2id,
     )
 
     data_collator = DataCollatorForTokenClassification(tokenizer)
