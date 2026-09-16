@@ -132,10 +132,67 @@ def build_compute_metrics(label_list):
 
 
 def main():
+    print("Loading dataset...")
     dataset = load_data()
     label_list = get_label_list(dataset)
+    print(f"Labels: {label_list}")
 
     # --- Take a subset for fast CPU training ---
     train_ds = dataset["train"].shuffle(seed=42).select(range(TRAIN_SUBSET_SIZE))
     eval_ds = dataset["validation"].shuffle(seed=42).select(range(EVAL_SUBSET_SIZE))
     print(f"Using subset: train={len(train_ds)}, eval={len(eval_ds)}")
+
+    print("Loading tokenizer...")
+    tokenizer = AutoTokenizer.from_pretrained(MODEL_CHECKPOINT)
+
+    print("Tokenizing...")
+    train_tok = train_ds.map(
+        lambda examples: tokenize_and_align_labels(examples, tokenizer), batched=True
+    )
+    eval_tok = eval_ds.map(
+        lambda examples: tokenize_and_align_labels(examples, tokenizer), batched=True
+    )
+
+    print("Loading model...")
+    model = AutoModelForTokenClassification.from_pretrained(
+        MODEL_CHECKPOINT, num_labels=len(label_list)
+    )
+
+    data_collator = DataCollatorForTokenClassification(tokenizer)
+
+    training_args = TrainingArguments(
+        output_dir=OUTPUT_DIR,
+        eval_strategy="epoch",
+        save_strategy="epoch",
+        learning_rate=3e-5,
+        per_device_train_batch_size=8,
+        per_device_eval_batch_size=8,
+        num_train_epochs=3,
+        weight_decay=0.01,
+        load_best_model_at_end=True,
+        metric_for_best_model="f1",
+        logging_steps=10,
+        use_cpu=True,
+    )
+
+    trainer = Trainer(
+        model=model,
+        args=training_args,
+        train_dataset=train_tok,
+        eval_dataset=eval_tok,
+        data_collator=data_collator,
+        tokenizer=tokenizer,
+        compute_metrics=build_compute_metrics(label_list),
+    )
+
+    print("Starting training...")
+    trainer.train()
+
+    print("Saving model...")
+    trainer.save_model(OUTPUT_DIR)
+    tokenizer.save_pretrained(OUTPUT_DIR)
+    print(f"Model saved to {OUTPUT_DIR}")
+
+
+if __name__ == "__main__":
+    main()
